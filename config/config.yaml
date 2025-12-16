@@ -1,0 +1,24 @@
+# 币安 API 配置
+api_key: "你的_BINANCE_API_KEY"
+api_secret: "你的_BINANCE_SECRET_KEY"
+passphrase: "" # 币安不需要这个，留空即可
+is_test: false # 如果是真的账号，设为 false
+
+# 策略配置
+# 资金费率阈值 (0.0001 = 0.01%)
+funding_threshold: 0.0001 
+
+# 价差阈值 (合约价格比现货价格高多少比例，0.001 = 0.1%)
+spread_threshold: 0.001
+
+# 检查间隔 (秒)
+check_interval: 10
+
+# 单次最大交易金额 (USDT)
+max_position_size: 100
+
+# 监控的交易对 (注意格式是 BTC/USDT)
+trading_pairs:
+  - "BTC/USDT"
+  - "ETH/USDT"
+  - "SOL/USDT"

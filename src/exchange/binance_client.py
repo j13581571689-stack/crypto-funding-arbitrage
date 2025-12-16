@@ -1,67 +1,70 @@
-import time
-import requests
-import hmac
-import base64
-import json
-from datetime import datetime
+import ccxt
 from utils.logger import get_logger
 
 logger = get_logger()
 
-class OKXClient:
-    def __init__(self, api_key, api_secret, passphrase, is_test=False):
-        self.API_KEY = api_key
-        self.API_SECRET = api_secret
-        self.PASSPHRASE = passphrase
-        self.BASE_URL = 'https://www.okx.com'
-        self.is_test = is_test
-
-    def _create_signature(self, timestamp, method, request_path, body):
-        message = f"{timestamp}{method}{request_path}{body}"
-        mac = hmac.new(
-            bytes(self.API_SECRET, encoding='utf-8'),
-            bytes(message, encoding='utf-8'),
-            digestmod='sha256'
-        )
-        return base64.b64encode(mac.digest()).decode()
-
-    def _send_request(self, method, path, body=None):
-        body = body or {}
-        timestamp = datetime.utcnow().isoformat("T", "milliseconds") + "Z"
-        body_str = json.dumps(body) if body else ""
+class BinanceClient:
+    def __init__(self, api_key, api_secret, is_test=False):
+        """
+        初始化币安客户端 (使用 CCXT)
+        """
+        self.exchange = ccxt.binance({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'enableRateLimit': True,
+            'options': {
+                'defaultType': 'future',  # 默认为合约账户
+                'adjustForTimeDifference': True, # 自动校准时间
+            }
+        })
         
-        headers = {
-            'OK-ACCESS-KEY': self.API_KEY,
-            'OK-ACCESS-SIGN': self._create_signature(timestamp, method.upper(), path, body_str),
-            'OK-ACCESS-TIMESTAMP': timestamp,
-            'OK-ACCESS-PASSPHRASE': self.PASSPHRASE,
-            'Content-Type': 'application/json'
-        }
+        # 如果是测试环境 (Binance Testnet)
+        if is_test:
+            self.exchange.set_sandbox_mode(True)
+            
+        # 初始化现货客户端用于查询现货价格
+        self.spot_exchange = ccxt.binance({
+            'apiKey': api_key,
+            'secret': api_secret,
+            'enableRateLimit': True,
+            'options': {
+                'defaultType': 'spot', 
+            }
+        })
 
-        url = self.BASE_URL + path
-        response = requests.request(method, url, headers=headers, data=body_str)
-        return response.json()
-
-    def get_funding_rate(self, inst_id):
-        """获取资金费率"""
+    def get_funding_rate(self, symbol):
+        """
+        获取资金费率
+        symbol格式: 'BTC/USDT'
+        """
         try:
-            response = self._send_request(
-                "GET", 
-                f"/api/v5/public/funding-rate?instId={inst_id}"
-            )
-            return float(response['data'][0]['fundingRate'])
+            # 币安合约获取资金费率
+            funding_info = self.exchange.fetch_funding_rate(symbol)
+            return float(funding_info['fundingRate'])
         except Exception as e:
-            logger.error(f"获取资金费率失败: {str(e)}")
+            logger.error(f"获取资金费率失败 {symbol}: {str(e)}")
             return None
 
-    def get_ticker(self, inst_id):
-        """获取最新价格"""
+    def get_ticker(self, symbol, type='future'):
+        """
+        获取最新价格
+        type: 'future' (合约) 或 'spot' (现货)
+        """
         try:
-            response = self._send_request(
-                "GET", 
-                f"/api/v5/market/ticker?instId={inst_id}"
-            )
-            return float(response['data'][0]['last'])
+            if type == 'spot':
+                ticker = self.spot_exchange.fetch_ticker(symbol)
+            else:
+                ticker = self.exchange.fetch_ticker(symbol)
+            return float(ticker['last'])
         except Exception as e:
-            logger.error(f"获取价格失败: {str(e)}")
+            logger.error(f"获取价格失败 {symbol} ({type}): {str(e)}")
             return None
+
+    def get_balance(self):
+        """获取USDT余额"""
+        try:
+            balance = self.exchange.fetch_balance()
+            return float(balance['USDT']['free'])
+        except Exception as e:
+            logger.error(f"获取余额失败: {str(e)}")
+            return 0.0
